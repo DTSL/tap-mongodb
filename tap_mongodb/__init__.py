@@ -52,6 +52,104 @@ ROLES_WITH_ALL_DB_FIND_PRIVILEGES = {
 }
 
 
+def produce_collection_schema(collection):
+    collection_name = collection.name
+    collection_db_name = collection.database.name
+
+    is_view = collection.options().get('viewOn') is not None
+
+    mdata = {}
+    mdata = metadata.write(mdata, (), 'table-key-properties', ['_id'])
+    mdata = metadata.write(mdata, (), 'database-name', collection_db_name)
+    mdata = metadata.write(mdata, (), 'row-count', collection.estimated_document_count())
+    mdata = metadata.write(mdata, (), 'is-view', is_view)
+
+    # write valid-replication-key metadata by finding fields that have indexes on them.
+    # cannot get indexes for views -- NB: This means no key-based incremental for views?
+    if not is_view:
+        valid_replication_keys = []
+        coll_indexes = collection.index_information()
+        # index_information() returns a map of index_name -> index_information
+        for _, index_info in coll_indexes.items():
+            # we don't support compound indexes
+            if len(index_info.get('key')) == 1:
+                index_field_info = index_info.get('key')[0]
+                # index_field_info is a tuple of (field_name, sort_direction)
+                if index_field_info:
+                    valid_replication_keys.append(index_field_info[0])
+
+        if valid_replication_keys:
+            mdata = metadata.write(mdata, (), 'valid-replication-keys', valid_replication_keys)
+
+    return {
+        'table_name': collection_name,
+        'stream': collection_name,
+        'metadata': metadata.to_list(mdata),
+        'tap_stream_id': "{}-{}".format(collection_db_name, collection_name),
+        'schema': {
+            'type': 'object'
+        }
+    }
+
+def do_discover(client, config, limit):
+    streams = []
+    db_name = config.get("database")
+    selected_stream = config.get("import")
+    filter_collections = config.get("filter_collections", [])
+
+    if db_name == "admin":
+        databases = get_databases(client, config)
+    else:
+        databases = [db_name]
+
+    for db_name in databases:
+        # pylint: disable=invalid-name
+        db = client[db_name]
+
+        collection_names = db.list_collection_names()
+        for collection_name in collection_names:
+            if collection_name.startswith("system.") or (
+                    filter_collections and collection_name not in filter_collections):
+                continue
+
+            # rediscover selected streams
+            database_stream = db_name + "-" + collection_name
+            if selected_stream and len(selected_stream.split("-")) == 3:
+                selected_database, selected_table, selected_subtable = selected_stream.split("-")
+                selected_stream = selected_database + "-" + selected_table
+            if selected_stream and selected_stream != database_stream:
+                continue
+
+            collection = db[collection_name]
+
+            is_view = collection.options().get('viewOn') is not None
+            # TODO: Add support for views
+            if is_view:
+                continue
+
+            LOGGER.info("Getting collection info for db: %s, collection: %s",
+                        db_name, collection_name)
+            stream = produce_collection_schema(collection, client, limit)
+            # could return more than one schema per catalog -> parent child split
+            if stream is not None:
+                streams.extend(stream)
+    return {'streams': streams}
+
+
+def get_databases(client, config):
+    roles = get_roles(client, config)
+    LOGGER.info('Roles: %s', roles)
+
+    can_read_all = len([r for r in roles if r['role'] in ROLES_WITH_ALL_DB_FIND_PRIVILEGES]) > 0
+
+    if can_read_all:
+        db_names = [d for d in client.list_database_names() if d not in IGNORE_DBS]
+    else:
+        db_names = [r['db'] for r in roles if r['db'] not in IGNORE_DBS]
+    LOGGER.info('Databases: %s', db_names)
+    return db_names
+
+
 def get_roles(client, config):
     # usersInfo Command returns object in shape:
     # {
@@ -102,84 +200,6 @@ def get_roles(client, config):
                     if sub_role.get('db'):
                         roles.append(sub_role)
     return roles
-
-def get_databases(client, config):
-    roles = get_roles(client, config)
-    LOGGER.info('Roles: %s', roles)
-
-    can_read_all = len([r for r in roles if r['role'] in ROLES_WITH_ALL_DB_FIND_PRIVILEGES]) > 0
-
-    if can_read_all:
-        db_names = [d for d in client.list_database_names() if d not in IGNORE_DBS]
-    else:
-        db_names = [r['db'] for r in roles if r['db'] not in IGNORE_DBS]
-    db_names = list(set(db_names))  # Make sure each db is only in the list once
-    LOGGER.info('Datbases: %s', db_names)
-    return db_names
-
-
-def produce_collection_schema(collection):
-    collection_name = collection.name
-    collection_db_name = collection.database.name
-
-    is_view = collection.options().get('viewOn') is not None
-
-    mdata = {}
-    mdata = metadata.write(mdata, (), 'table-key-properties', ['_id'])
-    mdata = metadata.write(mdata, (), 'database-name', collection_db_name)
-    mdata = metadata.write(mdata, (), 'row-count', collection.estimated_document_count())
-    mdata = metadata.write(mdata, (), 'is-view', is_view)
-
-    # write valid-replication-key metadata by finding fields that have indexes on them.
-    # cannot get indexes for views -- NB: This means no key-based incremental for views?
-    if not is_view:
-        valid_replication_keys = []
-        coll_indexes = collection.index_information()
-        # index_information() returns a map of index_name -> index_information
-        for _, index_info in coll_indexes.items():
-            # we don't support compound indexes
-            if len(index_info.get('key')) == 1:
-                index_field_info = index_info.get('key')[0]
-                # index_field_info is a tuple of (field_name, sort_direction)
-                if index_field_info:
-                    valid_replication_keys.append(index_field_info[0])
-
-        if valid_replication_keys:
-            mdata = metadata.write(mdata, (), 'valid-replication-keys', valid_replication_keys)
-
-    return {
-        'table_name': collection_name,
-        'stream': collection_name,
-        'metadata': metadata.to_list(mdata),
-        'tap_stream_id': "{}-{}".format(collection_db_name, collection_name),
-        'schema': {
-            'type': 'object'
-        }
-    }
-
-
-def do_discover(client, config):
-    streams = []
-
-    for db_name in get_databases(client, config):
-        # pylint: disable=invalid-name
-        db = client[db_name]
-
-        collection_names = db.list_collection_names()
-        for collection_name in [c for c in collection_names
-                                if not c.startswith("system.")]:
-
-            collection = db[collection_name]
-            is_view = collection.options().get('viewOn') is not None
-            # TODO: Add support for views
-            if is_view:
-                continue
-
-            LOGGER.info("Getting collection info for db: %s, collection: %s",
-                        db_name, collection_name)
-            streams.append(produce_collection_schema(collection))
-
-    json.dump({'streams' : streams}, sys.stdout, indent=2)
 
 
 def is_stream_selected(stream):

@@ -129,7 +129,7 @@ def do_discover(client, config, limit):
 
             LOGGER.info("Getting collection info for db: %s, collection: %s",
                         db_name, collection_name)
-            stream = produce_collection_schema(collection, client, limit)
+            stream = produce_collection_schema(collection)
             # could return more than one schema per catalog -> parent child split
             if stream is not None:
                 streams.extend(stream)
@@ -435,19 +435,14 @@ def get_client(args, config):
 
 def main_impl():
     client = get_client(ARGS, CONFIG)
-
     args = client.args
     config = client.config
-
-    LOGGER.info('Connected to MongoDB host: %s, version: %s',
-                client.address,
-                client.server_info().get('version', 'unknown'))
-
     common.INCLUDE_SCHEMAS_IN_DESTINATION_STREAM_NAME = \
         (config.get('include_schemas_in_destination_stream_name') == 'true')
 
     if args.discover:
-        do_discover(client, config)
+        catalog = do_discover(client, config, limit=1000)
+        json.dump(catalog, sys.stdout, indent=2)
     elif args.catalog:
         state = args.state or {}
         do_sync(client, args.catalog.to_dict(), state)

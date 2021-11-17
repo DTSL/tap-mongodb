@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 import base64
 import datetime
+import decimal
 import time
 import uuid
-import decimal
+
 import bson
-from bson import objectid, timestamp, datetime as bson_datetime
+import pytz
 import singer
+import tzlocal
+from bson import objectid, timestamp, datetime as bson_datetime
 from singer import utils, metadata
 from terminaltables import AsciiTable
-
-import pytz
-import tzlocal
 
 INCLUDE_SCHEMAS_IN_DESTINATION_STREAM_NAME = False
 UPDATE_BOOKMARK_PERIOD = 1000

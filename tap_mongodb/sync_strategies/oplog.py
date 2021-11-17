@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import copy
 import time
+
 import pymongo
 import singer
+from bson import timestamp
 from singer import metadata, utils
 
-from bson import timestamp
 import tap_mongodb.sync_strategies.common as common
 
 LOGGER = singer.get_logger()

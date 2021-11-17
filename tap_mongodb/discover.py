@@ -93,7 +93,7 @@ def get_databases(client, config):
 
     db_names = [d for d in client.list_database_names() if d not in IGNORE_DBS]
     db_names = list(set(db_names))  # Make sure each db is only in the list once
-    LOGGER('Datbases: %s', db_names)
+    LOGGER.info('Datbases: %s', db_names)
     return db_names
 
 

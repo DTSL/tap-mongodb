@@ -358,9 +358,12 @@ def check_connection(args, config):
             "username": parsed_uri['username'],
             "password": parsed_uri['password'],
             "authSource": parsed_uri['options']['authsource'],
-            "user": parsed_uri.get('username', 'admin'),
+            "user": parsed_uri.get('username'),
             "database": parsed_uri.get('database', 'admin')
         })
+        if config["user"] is None:
+            LOGGER.info('Setting default user to admin')
+            config["user"] = "admin"
 
         client = pymongo.MongoClient(config['connection_uri'])
         LOGGER.info('Connected to MongoDB host: %s, version: %s',

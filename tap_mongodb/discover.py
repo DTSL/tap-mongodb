@@ -4,6 +4,7 @@ import sys
 
 import singer
 from bson import errors
+from pymongo.collection import Collection
 from singer import metadata
 
 LOGGER = singer.get_logger()
@@ -156,7 +157,7 @@ def get_roles(client, config):
     return roles
 
 
-def produce_collection_schema(collection):
+def produce_collection_schema(collection : Collection):
     collection_name = collection.name
     collection_db_name = collection.database.name
 
@@ -185,7 +186,7 @@ def produce_collection_schema(collection):
         if valid_replication_keys:
             mdata = metadata.write(mdata, (), 'valid-replication-keys', valid_replication_keys)
 
-    return {
+    return [{
         'table_name': collection_name,
         'stream': collection_name,
         'metadata': metadata.to_list(mdata),
@@ -193,7 +194,7 @@ def produce_collection_schema(collection):
         'schema': {
             'type': 'object'
         }
-    }
+    }]
 
 
 #

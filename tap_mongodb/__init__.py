@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import copy
 import json
+import sys
 
 import singer
 from singer import metadata, metrics, utils
@@ -193,7 +194,8 @@ def main_impl():
         (config.get('include_schemas_in_destination_stream_name') == 'true')
 
     if args.discover:
-        do_discover(client, config, 2000)
+        catalog = do_discover(client, config, 2000)
+        json.dump(catalog, sys.stdout, indent=2)
     elif args.catalog:
         state = args.state or {}
         do_sync(client, args.catalog.to_dict(), state)

@@ -3,6 +3,7 @@ import json
 import sys
 
 import singer
+from bson import errors
 from singer import metadata
 
 LOGGER = singer.get_logger()
@@ -157,31 +158,49 @@ def get_roles(client, config):
 def produce_collection_schema(collection):
     collection_name = collection.name
     collection_db_name = collection.database.name
-
     is_view = collection.options().get('viewOn') is not None
 
-    mdata = {}
-    mdata = metadata.write(mdata, (), 'table-key-properties', ['_id'])
-    mdata = metadata.write(mdata, (), 'database-name', collection_db_name)
-    mdata = metadata.write(mdata, (), 'row-count', collection.estimated_document_count())
-    mdata = metadata.write(mdata, (), 'is-view', is_view)
+    # Analyze and build schema recursively
+    # schema = extract_pymongo_client_schema(client, collection_names=collection_name)
+    try:
+        mdata = {}
+        mdata = metadata.write(mdata, (), 'database-name', collection_db_name)
+        mdata = metadata.write(mdata, (), 'table-key-properties', ['_id'])
+        mdata = metadata.write(mdata, (), 'is-view', is_view)
+
+        # write valid-replication-key metadata by finding fields that have indexes on them.
+        # cannot get indexes for views -- NB: This means no key-based incremental for views?
+        if not is_view:
+            valid_replication_keys = []
+            coll_indexes = collection.index_information()
+            # index_information() returns a map of index_name -> index_information
+            for _, index_info in coll_indexes.items():
+                # we don't support compound indexes
+                if len(index_info.get('key')) == 1:
+                    index_field_info = index_info.get('key')[0]
+                    # index_field_info is a tuple of (field_name, sort_direction)
+                    if index_field_info:
+                        valid_replication_keys.append(index_field_info[0])
+
+            if valid_replication_keys:
+                mdata = metadata.write(mdata, (), 'valid-replication-keys', valid_replication_keys)
+
+    except errors.InvalidBSON as e:
+        LOGGER.warning("ignored db {}.{} due to BSON error: {}".format(
+            collection_db_name,
+            collection_name,
+            str(e)
+        ))
+    except Exception as e:
+        LOGGER.warning("ignored db {}.{} due to other error: {}".format(
+            collection_db_name,
+            collection_name,
+            str(e)
+        ))
+        return None
 
     # write valid-replication-key metadata by finding fields that have indexes on them.
     # cannot get indexes for views -- NB: This means no key-based incremental for views?
-    if not is_view:
-        valid_replication_keys = []
-        coll_indexes = collection.index_information()
-        # index_information() returns a map of index_name -> index_information
-        for _, index_info in coll_indexes.items():
-            # we don't support compound indexes
-            if len(index_info.get('key')) == 1:
-                index_field_info = index_info.get('key')[0]
-                # index_field_info is a tuple of (field_name, sort_direction)
-                if index_field_info:
-                    valid_replication_keys.append(index_field_info[0])
-
-        if valid_replication_keys:
-            mdata = metadata.write(mdata, (), 'valid-replication-keys', valid_replication_keys)
 
     return {
         'table_name': collection_name,
@@ -192,3 +211,44 @@ def produce_collection_schema(collection):
             'type': 'object'
         }
     }
+
+
+#
+# def produce_collection_schema(collection):
+#     collection_name = collection.name
+#     collection_db_name = collection.database.name
+#
+#     is_view = collection.options().get('viewOn') is not None
+#
+#     mdata = {}
+#     mdata = metadata.write(mdata, (), 'table-key-properties', ['_id'])
+#     mdata = metadata.write(mdata, (), 'database-name', collection_db_name)
+#     mdata = metadata.write(mdata, (), 'row-count', collection.estimated_document_count())
+#     mdata = metadata.write(mdata, (), 'is-view', is_view)
+#
+#     # write valid-replication-key metadata by finding fields that have indexes on them.
+#     # cannot get indexes for views -- NB: This means no key-based incremental for views?
+#     if not is_view:
+#         valid_replication_keys = []
+#         coll_indexes = collection.index_information()
+#         # index_information() returns a map of index_name -> index_information
+#         for _, index_info in coll_indexes.items():
+#             # we don't support compound indexes
+#             if len(index_info.get('key')) == 1:
+#                 index_field_info = index_info.get('key')[0]
+#                 # index_field_info is a tuple of (field_name, sort_direction)
+#                 if index_field_info:
+#                     valid_replication_keys.append(index_field_info[0])
+#
+#         if valid_replication_keys:
+#             mdata = metadata.write(mdata, (), 'valid-replication-keys', valid_replication_keys)
+#
+#     return {
+#         'table_name': collection_name,
+#         'stream': collection_name,
+#         'metadata': metadata.to_list(mdata),
+#         'tap_stream_id': "{}-{}".format(collection_db_name, collection_name),
+#         'schema': {
+#             'type': 'object'
+#         }
+#     }

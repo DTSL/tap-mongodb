@@ -79,22 +79,22 @@ def do_discover(client, config, limit):
     return {'streams': streams}
 
 def get_databases(client, config):
-    roles = get_roles(client, config)
-
-    can_read_all = len([r for r in roles if r['role'] in ROLES_WITH_ALL_DB_FIND_PRIVILEGES]) > 0
-
-    if can_read_all:
-        db_names = [d for d in client.list_database_names() if d not in IGNORE_DBS]
-    else:
-        db_names = [r['db'] for r in roles if r['db'] not in IGNORE_DBS]
-    db_names = list(set(db_names))  # Make sure each db is only in the list once
-    LOGGER.info('Datbases: %s', db_names)
-    return db_names
-
-    # db_names = [d for d in client.list_database_names() if d not in IGNORE_DBS]
+    # roles = get_roles(client, config)
+    #
+    # can_read_all = len([r for r in roles if r['role'] in ROLES_WITH_ALL_DB_FIND_PRIVILEGES]) > 0
+    #
+    # if can_read_all:
+    #     db_names = [d for d in client.list_database_names() if d not in IGNORE_DBS]
+    # else:
+    #     db_names = [r['db'] for r in roles if r['db'] not in IGNORE_DBS]
     # db_names = list(set(db_names))  # Make sure each db is only in the list once
-    # LOGGER('Datbases: %s', db_names)
+    # LOGGER.info('Datbases: %s', db_names)
     # return db_names
+
+    db_names = [d for d in client.list_database_names() if d not in IGNORE_DBS]
+    db_names = list(set(db_names))  # Make sure each db is only in the list once
+    LOGGER('Datbases: %s', db_names)
+    return db_names
 
 
 def get_roles(client, config):

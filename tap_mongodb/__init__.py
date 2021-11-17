@@ -193,7 +193,7 @@ def main_impl():
         (config.get('include_schemas_in_destination_stream_name') == 'true')
 
     if args.discover:
-        do_discover(client, config)
+        do_discover(client, config, 2000)
     elif args.catalog:
         state = args.state or {}
         do_sync(client, args.catalog.to_dict(), state)

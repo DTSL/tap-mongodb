@@ -358,7 +358,7 @@ def check_connection(args, config):
             "username": parsed_uri['username'],
             "password": parsed_uri['password'],
             "authSource": parsed_uri['options']['authsource'],
-            "user": parsed_uri['username'],
+            "user": parsed_uri.get('username', 'admin'),
             "database": parsed_uri.get('database', 'admin')
         })
 
@@ -415,7 +415,6 @@ def main_impl():
 
     args = client.args
     config = client.config
-
 
     LOGGER.info('Connected to MongoDB host: %s, version: %s',
                 client.address,

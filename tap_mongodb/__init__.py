@@ -187,7 +187,14 @@ def do_sync(client, catalog, state):
 
 
 def main_impl():
-    client = get_client(ARGS, CONFIG)
+    state = ARGS.state or {}
+    try:
+        client = get_client(ARGS, CONFIG)
+    except Exception as exc:
+        LOGGER.critical(exc)
+        singer.write_message(singer.StateMessage(value=copy.deepcopy(state)))
+        raise exc
+
     args = client.args
     config = client.config
     common.INCLUDE_SCHEMAS_IN_DESTINATION_STREAM_NAME = \

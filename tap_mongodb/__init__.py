@@ -190,11 +190,12 @@ def main_impl():
     state = ARGS.state or {}
     try:
         client = get_client(ARGS, CONFIG)
+        raise Exception("manully killing the process to test how the state is saved")
     except Exception as exc:
         LOGGER.critical(exc)
         singer.write_message(singer.StateMessage(value=copy.deepcopy(state)))
         raise exc
-
+    sys.exit("manully killing the process to test how the state is saved")
     args = client.args
     config = client.config
     common.INCLUDE_SCHEMAS_IN_DESTINATION_STREAM_NAME = \
